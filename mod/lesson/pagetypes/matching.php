@@ -134,7 +134,7 @@ class lesson_page_type_matching extends lesson_page {
         $answers = array();
 
         // need to add two to offset correct response and wrong response
-        $this->lesson->maxanswers = $this->lesson->maxanswers + 2;
+        $this->lesson->maxanswers = 20 + 2;
         for ($i = 0; $i < $this->lesson->maxanswers; $i++) {
             $answer = clone($newanswer);
             if (!empty($properties->answer_editor[$i]) && is_array($properties->answer_editor[$i])) {
@@ -340,7 +340,7 @@ class lesson_page_type_matching extends lesson_page {
         \mod_lesson\event\page_updated::create_from_lesson_page($this, $context)->trigger();
 
         // need to add two to offset correct response and wrong response
-        $this->lesson->maxanswers += 2;
+        $this->lesson->maxanswers = 20 + 2;
         for ($i = 0; $i < $this->lesson->maxanswers; $i++) {
             if (!array_key_exists($i, $this->answers)) {
                 $this->answers[$i] = new stdClass;
@@ -520,6 +520,7 @@ class lesson_add_page_form_matching extends lesson_add_page_form_base {
         $this->add_jumpto(1, get_string('wronganswerjump','lesson'), LESSON_THISPAGE);
         $this->add_score(1, get_string("wronganswerscore", "lesson"), 0);
 
+        $this->_customdata['lesson']->maxanswers = 20;
         for ($i = 2; $i < $this->_customdata['lesson']->maxanswers+2; $i++) {
             $this->_form->addElement('header', 'matchingpair'.($i-1), get_string('matchingpair', 'lesson', $i-1));
             $this->add_answer($i, null, ($i < 4), LESSON_ANSWER_HTML);

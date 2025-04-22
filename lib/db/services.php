@@ -3316,6 +3316,14 @@ $functions = array(
         'type' => 'read',
         'ajax' => true,
     ],
+    'core_external_create_subsection_hard' => [
+        'classname'   => 'core_external',
+        'methodname'  => 'create_subsection_hard',
+        'classpath'   => 'lib/external/externallib.php', 
+        'description' => 'Create a subsection physically',
+        'type'        => 'write',
+        'capabilities'=> 'moodle/course:update'
+    ],
 );
 
 $services = array(

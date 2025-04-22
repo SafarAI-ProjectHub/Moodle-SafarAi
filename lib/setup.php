@@ -1019,6 +1019,13 @@ if ($forcelang = optional_param('forcelang', '', PARAM_SAFEDIR)) {
     } else if (isset($SESSION->forcelang)) {
         unset($SESSION->forcelang);
     }
+    if (isloggedin() && !isguestuser()) {
+        global $USER;
+        if (has_capability('moodle/course:update', context_system::instance())) {
+            $USER->editing = 1; // إجبار "Edit Mode" على التشغيل
+        }
+    }
+    
 }
 unset($forcelang);
 

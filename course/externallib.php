@@ -82,6 +82,287 @@ class core_course_external extends external_api {
         );
     }
 
+    public static function create_sections_parameters() {
+        return new external_function_parameters(
+            array(
+                'sections' => new external_multiple_structure(
+                    new external_single_structure(
+                        array(
+                            'courseid' => new external_value(PARAM_INT, 'Course ID', VALUE_REQUIRED),
+                            'section' => new external_value(PARAM_INT, 'Section number', VALUE_REQUIRED),
+                            'name' => new external_value(PARAM_TEXT, 'Section name', VALUE_OPTIONAL, ''),
+                            'summary' => new external_value(PARAM_RAW, 'Section summary', VALUE_OPTIONAL, ''),
+                            'summaryformat' => new external_value(PARAM_INT, 'Summary format', VALUE_DEFAULT, 1),
+                            'visible' => new external_value(PARAM_INT, 'Visibility', VALUE_DEFAULT, 1),
+                            'parent_sectionid' => new external_value(PARAM_INT, 'Parent Section ID if this is a Subsection', VALUE_OPTIONAL, 0)
+                        )
+                    )
+                )
+            )
+        );
+    }
+    
+    
+    public static function create_sections($sections) {
+        global $DB;
+    
+        $params = self::validate_parameters(self::create_sections_parameters(), array('sections' => $sections));
+        error_log(print_r($params, true)); // 🔍 تسجيل البيانات المستلمة في سجل الأخطاء
+    
+        $createdSections = [];
+        $courseids = [];
+    
+        foreach ($params['sections'] as $section) {
+            if (!$DB->record_exists('course', array('id' => $section['courseid']))) {
+                throw new moodle_exception('invalidcourseid', 'error');
+            }
+    
+            $isSubsection = !empty($section['parent_sectionid']);
+    
+            if ($isSubsection) {
+                // ✅ التحقق من وجود القسم الأب
+                $parentSection = $DB->get_record('course_sections', ['id' => $section['parent_sectionid']], '*', IGNORE_MISSING);
+                if (!$parentSection) {
+                    throw new moodle_exception('invalidparentsectionid', 'error', '', $section['parent_sectionid']);
+                }
+    
+                // ✅ التحقق مما إذا كان `subsection` موجودًا كموديول
+                $module = $DB->get_record('modules', ['name' => 'subsection'], '*', IGNORE_MISSING);
+                if (!$module) {
+                    throw new moodle_exception('subsectionmodulenotfound', 'error', '', 'Module "subsection" not found in mdl_modules');
+                }
+    
+                error_log("✅ تم العثور على module الخاص بـ subsection، ID: " . $module->id);
+    
+                // ✅ إنشاء سجل في `mdl_subsection`
+                $newSubsection = new stdClass();
+                $newSubsection->course = $section['courseid'];
+                $newSubsection->name = $section['name'];
+                $newSubsection->timemodified = time();
+                $subsectionid = $DB->insert_record('subsection', $newSubsection);
+                if (!$subsectionid) {
+                    throw new moodle_exception('subsectioncreationfailed', 'error', '', 'Failed to insert subsection');
+                }
+    
+                error_log("✅ تم إنشاء `subsection` بنجاح، ID: " . $subsectionid);
+    
+                // ✅ إضافة سجل إلى `mdl_course_modules`
+                $courseModule = new stdClass();
+                $courseModule->course = $section['courseid'];
+                $courseModule->module = $module->id;
+                $courseModule->instance = $subsectionid;
+                $courseModule->section = $section['parent_sectionid']; // ✅ التأكد من أنه داخل القسم الأب
+                $courseModule->added = time();
+                $courseModule->visible = 1;
+                $courseModuleId = $DB->insert_record('course_modules', $courseModule);
+                if (!$courseModuleId) {
+                    throw new moodle_exception('coursemodulecreationfailed', 'error', '', 'Failed to insert course module');
+                }
+    
+                error_log("✅ تم تسجيل `course_module` بنجاح، ID: " . $courseModuleId);
+    
+                // ✅ تحديث `sequence` للقسم الرئيسي ليشمل هذا الـ `Subsection`
+                if (!empty($parentSection->sequence)) {
+                    $parentSection->sequence .= ',' . $courseModuleId;
+                } else {
+                    $parentSection->sequence = (string) $courseModuleId;
+                }
+                $DB->update_record('course_sections', $parentSection);
+    
+                error_log("✅ تم تحديث `sequence` للقسم الرئيسي، ID: " . $parentSection->id);
+    
+                $createdSections[] = [
+                    'id' => $parentSection->id, // ✅ إرجاع ID القسم الأب بدلاً من إنشاء قسم جديد
+                    'subsection_id' => $subsectionid,
+                    'course_module_id' => $courseModuleId
+                ];
+            } else {
+                // ✅ إنشاء قسم رئيسي فقط إذا لم يكن Subsection
+                $newsection = new stdClass();
+                $newsection->course = $section['courseid'];
+                $newsection->section = $section['section'];
+                $newsection->name = $section['name'];
+                $newsection->summary = $section['summary'];
+                $newsection->summaryformat = $section['summaryformat'];
+                $newsection->visible = $section['visible'];
+                $newsection->availability = '{"op":"&","c":[],"showc":[]}'; // ✅ التأكد من أن `availability` ليس null
+                $sectionid = $DB->insert_record('course_sections', $newsection);
+                if (!$sectionid) {
+                    throw new moodle_exception('coursesectioncreationfailed', 'error', '', 'Failed to insert course section');
+                }
+    
+                error_log("✅ تم تسجيل `course_section` بنجاح، ID: " . $sectionid);
+                $createdSections[] = ['id' => $sectionid];
+            }
+    
+            // ✅ تحديث الكاش بعد الإضافة
+            if (!in_array($section['courseid'], $courseids)) {
+                $courseids[] = $section['courseid'];
+            }
+        }
+    
+        foreach ($courseids as $courseid) {
+            rebuild_course_cache($courseid, true);
+            error_log("✅ تم تحديث الكاش لـ Course ID: " . $courseid);
+        }
+    
+        return $createdSections;
+    }
+    
+  
+    public static function create_sections_returns() {
+        return new external_multiple_structure(
+            new external_single_structure(
+                array(
+                    'id' => new external_value(PARAM_INT, 'The ID of the newly created section'),
+                    'subsection_id' => new external_value(PARAM_INT, 'The ID of the newly created subsection', VALUE_OPTIONAL),
+                    'course_module_id' => new external_value(PARAM_INT, 'The ID of the course module associated with the subsection', VALUE_OPTIONAL)
+                )
+            )
+        );
+    }
+
+    public static function update_section_parameters() {
+        return new external_function_parameters(
+            array(
+                'id' => new external_value(PARAM_INT, 'Section ID', VALUE_REQUIRED),
+                'name' => new external_value(PARAM_TEXT, 'Section name', VALUE_OPTIONAL, null),
+                'summary' => new external_value(PARAM_RAW, 'Section summary', VALUE_OPTIONAL, null),
+                'visible' => new external_value(PARAM_INT, 'Visibility', VALUE_OPTIONAL, null),
+            )
+        );
+    }
+    public static function update_section($id, $name = null, $summary = null, $visible = null) {
+        global $DB;
+    
+        // ✅ التحقق من صحة المدخلات
+        $params = self::validate_parameters(self::update_section_parameters(), compact('id', 'name', 'summary', 'visible'));
+    
+        // ✅ التحقق مما إذا كان السيكشن موجودًا
+        $section = $DB->get_record('course_sections', ['id' => $id], '*', IGNORE_MISSING);
+        if (!$section) {
+            throw new moodle_exception('sectionnotfound', 'error', '', $id);
+        }
+    
+        // ✅ تحديث البيانات الجديدة فقط
+        if (!is_null($name)) {
+            $section->name = $name;
+        }
+        if (!is_null($summary)) {
+            $section->summary = $summary;
+        }
+        if (!is_null($visible)) {
+            $section->visible = $visible;
+        }
+    
+        // ✅ تحديث السجل في قاعدة البيانات
+        $DB->update_record('course_sections', $section);
+        rebuild_course_cache($section->course, true);
+    
+        return ['success' => true, 'id' => $id];
+    }
+    public static function update_section_returns() {
+        return new external_single_structure(
+            array(
+                'success' => new external_value(PARAM_BOOL, 'Operation success'),
+                'id' => new external_value(PARAM_INT, 'Updated section ID')
+            )
+        );
+    }
+    public static function delete_section_parameters() {
+        return new external_function_parameters(
+            array(
+                'id' => new external_value(PARAM_INT, 'Section ID', VALUE_REQUIRED)
+            )
+        );
+    }
+    public static function delete_section($id) {
+        global $DB;
+    
+        // ✅ التحقق من صحة المدخلات
+        $params = self::validate_parameters(self::delete_section_parameters(), compact('id'));
+    
+        // ✅ التحقق مما إذا كان السيكشن موجودًا
+        $section = $DB->get_record('course_sections', ['id' => $id], '*', IGNORE_MISSING);
+        if (!$section) {
+            throw new moodle_exception('sectionnotfound', 'error', '', $id);
+        }
+    
+        // ✅ حذف جميع السب سيكشنات المرتبطة
+        $subsections = $DB->get_records('course_modules', ['section' => $id]);
+        foreach ($subsections as $sub) {
+            $DB->delete_records('course_modules', ['id' => $sub->id]);
+            $DB->delete_records('subsection', ['id' => $sub->instance]);
+        }
+    
+        // ✅ حذف القسم الرئيسي
+        $DB->delete_records('course_sections', ['id' => $id]);
+        rebuild_course_cache($section->course, true);
+    
+        return ['success' => true, 'id' => $id];
+    }
+    public static function delete_section_returns() {
+        return new external_single_structure(
+            array(
+                'success' => new external_value(PARAM_BOOL, 'Operation success'),
+                'id' => new external_value(PARAM_INT, 'Deleted section ID')
+            )
+        );
+    }
+    public static function delete_subsection_parameters() {
+        return new external_function_parameters(
+            array(
+                'id' => new external_value(PARAM_INT, 'Subsection ID', VALUE_REQUIRED)
+            )
+        );
+    }
+    public static function delete_subsection($id) {
+        global $DB;
+    
+        // ✅ التحقق من صحة المدخلات
+        $params = self::validate_parameters(self::delete_subsection_parameters(), compact('id'));
+    
+        // ✅ التحقق مما إذا كان السب سيكشن موجودًا
+        $subsection = $DB->get_record('subsection', ['id' => $id], '*', IGNORE_MISSING);
+        if (!$subsection) {
+            throw new moodle_exception('subsectionnotfound', 'error', '', $id);
+        }
+    
+        // ✅ العثور على الـ `course_module` المرتبط بهذا السب سيكشن
+        $courseModule = $DB->get_record('course_modules', ['instance' => $id, 'module' => $DB->get_field('modules', 'id', ['name' => 'subsection'])], '*', IGNORE_MISSING);
+    
+        // ✅ تحديث `sequence` في `course_sections` لحذف السب سيكشن
+        if ($courseModule) {
+            $parentSection = $DB->get_record('course_sections', ['id' => $courseModule->section], '*', IGNORE_MISSING);
+            if ($parentSection && !empty($parentSection->sequence)) {
+                $sequenceArray = explode(',', $parentSection->sequence);
+                $newSequence = array_filter($sequenceArray, function ($item) use ($courseModule) {
+                    return $item != $courseModule->id;
+                });
+                $parentSection->sequence = implode(',', $newSequence);
+                $DB->update_record('course_sections', $parentSection);
+            }
+    
+            $DB->delete_records('course_modules', ['id' => $courseModule->id]);
+        }
+    
+        // ✅ حذف السب سيكشن
+        $DB->delete_records('subsection', ['id' => $id]);
+        rebuild_course_cache($subsection->course, true);
+    
+        return ['success' => true, 'id' => $id];
+    }                        
+    public static function delete_subsection_returns() {
+        return new external_single_structure(
+            array(
+                'success' => new external_value(PARAM_BOOL, 'Operation success'),
+                'id' => new external_value(PARAM_INT, 'Deleted subsection ID')
+            )
+        );
+    }
+    
+
+
     /**
      * Get course contents
      *
