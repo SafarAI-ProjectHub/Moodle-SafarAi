@@ -678,95 +678,95 @@ class core_external extends external_api {
 //     // ---------------------------------------------------------------
 //     //  create_subsection_hard
 //     // ---------------------------------------------------------------
-//     /**
-//      * Returns the description of create_subsection_hard() parameters
-//      */
-//     public static function create_subsection_hard_parameters() {
-//         return new external_function_parameters([
-//             'sectionnumber'   => new external_value(PARAM_INT, 'Section number', VALUE_REQUIRED),
-//             'courseid'        => new external_value(PARAM_INT, 'Course ID', VALUE_REQUIRED),
-//             'parentsectionid' => new external_value(PARAM_INT, 'Parent section ID', VALUE_REQUIRED),
-//             'name'            => new external_value(PARAM_TEXT, 'Subsection name', VALUE_REQUIRED),
-//             'summary'         => new external_value(PARAM_RAW, 'Summary text', VALUE_DEFAULT, ''),
-//         ]);
-//     }
+    /**
+     * Returns the description of create_subsection_hard() parameters
+     */
+    public static function create_subsection_hard_parameters() {
+        return new external_function_parameters([
+            'sectionnumber'   => new external_value(PARAM_INT, 'Section number', VALUE_REQUIRED),
+            'courseid'        => new external_value(PARAM_INT, 'Course ID', VALUE_REQUIRED),
+            'parentsectionid' => new external_value(PARAM_INT, 'Parent section ID', VALUE_REQUIRED),
+            'name'            => new external_value(PARAM_TEXT, 'Subsection name', VALUE_REQUIRED),
+            'summary'         => new external_value(PARAM_RAW, 'Summary text', VALUE_DEFAULT, ''),
+        ]);
+    }
 
-//     /**
-//      * Create a new subsection record in course_sections table
-//      * + Possibly create a mod_subsection instance in course_modules if needed
-//      *
-//      * @param int $sectionnumber
-//      * @param int $courseid
-//      * @param int $parentsectionid
-//      * @param string $name
-//      * @param string $summary
-//      * @return array
-//      * @throws moodle_exception
-//      */
-//     public static function create_subsection_hard($sectionnumber, $courseid, $parentsectionid, $name, $summary='') {
-//         global $DB;
+    /**
+     * Create a new subsection record in course_sections table
+     * + Possibly create a mod_subsection instance in course_modules if needed
+     *
+     * @param int $sectionnumber
+     * @param int $courseid
+     * @param int $parentsectionid
+     * @param string $name
+     * @param string $summary
+     * @return array
+     * @throws moodle_exception
+     */
+    public static function create_subsection_hard($sectionnumber, $courseid, $parentsectionid, $name, $summary='') {
+        global $DB;
 
-//         $params = self::validate_parameters(
-//             self::create_subsection_hard_parameters(),
-//             [
-//                 'sectionnumber'   => $sectionnumber,
-//                 'courseid'        => $courseid,
-//                 'parentsectionid' => $parentsectionid,
-//                 'name'            => $name,
-//                 'summary'         => $summary
-//             ]
-//         );
+        $params = self::validate_parameters(
+            self::create_subsection_hard_parameters(),
+            [
+                'sectionnumber'   => $sectionnumber,
+                'courseid'        => $courseid,
+                'parentsectionid' => $parentsectionid,
+                'name'            => $name,
+                'summary'         => $summary
+            ]
+        );
 
-//         $context = \context_course::instance($params['courseid']);
-//         self::validate_context($context);
-//         require_capability('moodle/course:update', $context);
+        $context = \context_course::instance($params['courseid']);
+        self::validate_context($context);
+        require_capability('moodle/course:update', $context);
 
-//         // First, create a new record in course_sections
-//         $record = new stdClass();
-//         $record->course        = $params['courseid'];
-//         $record->section       = $params['sectionnumber'];
-//         $record->name          = $params['name'];
-//         $record->summary       = $params['summary'];
-//         $record->summaryformat = 1;
-//         $record->visible       = 1;
-//         $record->availability  = '{"op":"&","c":[],"showc":[]}';
+        // First, create a new record in course_sections
+        $record = new stdClass();
+        $record->course        = $params['courseid'];
+        $record->section       = $params['sectionnumber'];
+        $record->name          = $params['name'];
+        $record->summary       = $params['summary'];
+        $record->summaryformat = 1;
+        $record->visible       = 1;
+        $record->availability  = '{"op":"&","c":[],"showc":[]}';
 
-//         $newsectionid = $DB->insert_record('course_sections', $record);
+        $newsectionid = $DB->insert_record('course_sections', $record);
 
-//         // If you need to create a course_module with mod_subsection:
-//         // e.g. $module = $DB->get_record('modules', ['name' => 'subsection'], '*', MUST_EXIST);
-//         // $mrec = new stdClass();
-//         // $mrec->course  = $params['courseid'];
-//         // $mrec->module  = $module->id;
-//         // $mrec->instance= ??? (the instance id of the "subsection" plugin)
-//         // $mrec->section = $parentsectionid; // meaning it's placed under the parent
-//         // $newcmid = $DB->insert_record('course_modules', $mrec);
+        // If you need to create a course_module with mod_subsection:
+        // e.g. $module = $DB->get_record('modules', ['name' => 'subsection'], '*', MUST_EXIST);
+        // $mrec = new stdClass();
+        // $mrec->course  = $params['courseid'];
+        // $mrec->module  = $module->id;
+        // $mrec->instance= ??? (the instance id of the "subsection" plugin)
+        // $mrec->section = $parentsectionid; // meaning it's placed under the parent
+        // $newcmid = $DB->insert_record('course_modules', $mrec);
 
-//         // Also you may want to update the parent's ->sequence with the newly inserted coursemodule ID
+        // Also you may want to update the parent's ->sequence with the newly inserted coursemodule ID
 
-//         // Return the new IDs:
-//         // for now, let's assume we have $subinstanceid and $newcmid if needed:
-//         $subinstanceid = 0; // or actual ID if you create a mod_subsection instance
-//         $newcmid       = 0; // or the newly created coursemodule
+        // Return the new IDs:
+        // for now, let's assume we have $subinstanceid and $newcmid if needed:
+        $subinstanceid = 0; // or actual ID if you create a mod_subsection instance
+        $newcmid       = 0; // or the newly created coursemodule
 
-//         return [
-//             'id'             => $newsectionid,     // The new course_sections id
-//             'subsection_id'  => $subinstanceid,    // If you created an instance in mod_subsection
-//             'course_module_id' => $newcmid
-//         ];
-//     }
+        return [
+            'id'             => $newsectionid,     // The new course_sections id
+            'subsection_id'  => $subinstanceid,    // If you created an instance in mod_subsection
+            'course_module_id' => $newcmid
+        ];
+    }
 
-//     /**
-//      * Returns structure for create_subsection_hard() result
-//      *
-//      * @return \external_single_structure
-//      */
-//     public static function create_subsection_hard_returns() {
-//         return new external_single_structure([
-//             'id' => new external_value(PARAM_INT, 'Newly created course_sections.id'),
-//             'subsection_id' => new external_value(PARAM_INT, 'Subsection plugin instance id (if any)', VALUE_OPTIONAL),
-//             'course_module_id' => new external_value(PARAM_INT, 'Course module id for the newly created submodule (if any)', VALUE_OPTIONAL),
-//         ]);
-//     }
+    /**
+     * Returns structure for create_subsection_hard() result
+     *
+     * @return \external_single_structure
+     */
+    public static function create_subsection_hard_returns() {
+        return new external_single_structure([
+            'id' => new external_value(PARAM_INT, 'Newly created course_sections.id'),
+            'subsection_id' => new external_value(PARAM_INT, 'Subsection plugin instance id (if any)', VALUE_OPTIONAL),
+            'course_module_id' => new external_value(PARAM_INT, 'Course module id for the newly created submodule (if any)', VALUE_OPTIONAL),
+        ]);
+    }
 
 }
